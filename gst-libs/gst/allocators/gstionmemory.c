@@ -111,7 +111,7 @@ gst_ion_ioctl (gint fd, gint req, void *arg)
 }
 
 static void
-gst_ion_mem_init (void)
+gst_ion_mem_init (const gchar *name)
 {
   GstAllocator *allocator = g_object_new (gst_ion_allocator_get_type (), NULL);
   GstIONAllocator *self = GST_ION_ALLOCATOR (allocator);
@@ -126,7 +126,7 @@ gst_ion_mem_init (void)
 
   self->fd = fd;
 
-  gst_allocator_register (GST_ALLOCATOR_ION, allocator);
+  gst_allocator_register (name, allocator);
 }
 
 GstAllocator *
@@ -135,11 +135,26 @@ gst_ion_allocator_obtain (void)
   static GOnce ion_allocator_once = G_ONCE_INIT;
   GstAllocator *allocator;
 
-  g_once (&ion_allocator_once, (GThreadFunc) gst_ion_mem_init, NULL);
+  g_once (&ion_allocator_once, (GThreadFunc) gst_ion_mem_init, GST_ALLOCATOR_ION);
 
   allocator = gst_allocator_find (GST_ALLOCATOR_ION);
   if (allocator == NULL)
     GST_WARNING ("No allocator named %s found", GST_ALLOCATOR_ION);
+
+  return allocator;
+}
+
+GstAllocator *
+gst_ion_allocator_vpu_obtain (void)
+{
+  static GOnce ion_allocator_vpu_once = G_ONCE_INIT;
+  GstAllocator *allocator;
+
+  g_once (&ion_allocator_vpu_once, (GThreadFunc) gst_ion_mem_init, GST_ALLOCATOR_ION_VPU);
+
+  allocator = gst_allocator_find (GST_ALLOCATOR_ION_VPU);
+  if (allocator == NULL)
+    GST_WARNING ("No allocator named %s found", GST_ALLOCATOR_ION_VPU);
 
   return allocator;
 }
@@ -224,6 +239,7 @@ gst_ion_allocator_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_HEAP_ID:
       self->heap_id = g_value_get_uint (value);
+      GST_DEBUG("heap_id has been set to %u", self->heap_id);
       break;
     case PROP_FLAG:
       self->flags = g_value_get_uint (value);
