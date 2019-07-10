@@ -2400,12 +2400,17 @@ plugin_init (GstPlugin * plugin)
 {
   GstRank rank = GST_RANK_SECONDARY;
 
+#if 0
   if (HAS_DPU()) {
     if (HAS_VPU())
       rank = IMX_GST_PLUGIN_RANK;
   } else if (HAS_DCSS()) {
     rank = IMX_GST_PLUGIN_RANK;
   }
+#else
+  GST_INFO("[AJ] Disable kmssink (set rank to GST_RANK_NONE)\n");
+  rank = GST_RANK_NONE;
+#endif
 
   if (!gst_element_register (plugin, GST_PLUGIN_NAME, rank,
           GST_TYPE_KMS_SINK))
