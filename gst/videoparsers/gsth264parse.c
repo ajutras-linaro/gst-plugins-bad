@@ -2168,16 +2168,66 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
     h264parse->discont = FALSE;
   }
 
+#ifdef DUMP_GSTBUFFER_INFO
+  if(buffer != NULL){
+    unsigned int mem_count = gst_buffer_n_memory(buffer);
+    GstMemory *memory = NULL;
+    unsigned int ii = 0;
+
+    GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer (buffer) has %u GstMemory", mem_count);
+    GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(buffer));
+
+    for(ii = 0; ii < mem_count; ii++) {
+      memory = gst_buffer_get_memory(buffer, ii);
+      if(memory != NULL) {
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory type is %s", memory->allocator->mem_type);
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory has %u bytes", memory->size);
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
+        gst_memory_unref(memory);
+      } else {
+        GST_ERROR_OBJECT (h264parse, "[DUMP] GstMemory is NULL");
+      }
+    }
+  }
+#endif
+
   /* replace with transformed AVC output if applicable */
   av = gst_adapter_available (h264parse->frame_out);
   if (av) {
     GstBuffer *buf;
+
+#ifdef DUMP_GSTBUFFER_INFO
+    GST_DEBUG_OBJECT(h264parse, "[DUMP] Copying and replacing GstBuffer");
+#endif
 
     buf = gst_adapter_take_buffer (h264parse->frame_out, av);
     gst_buffer_copy_into (buf, buffer, GST_BUFFER_COPY_METADATA, 0, -1);
     gst_buffer_replace (&frame->out_buffer, buf);
     gst_buffer_unref (buf);
   }
+
+#ifdef DUMP_GSTBUFFER_INFO
+  if(frame->out_buffer != NULL){
+    unsigned int mem_count = gst_buffer_n_memory(frame->out_buffer);
+    GstMemory *memory = NULL;
+    unsigned int ii = 0;
+
+    GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer (frame->out_buffer) has %u GstMemory", mem_count);
+    GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer (frame->out_buffer) reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(frame->out_buffer));
+
+    for(ii = 0; ii < mem_count; ii++) {
+      memory = gst_buffer_get_memory(frame->out_buffer, ii);
+      if(memory != NULL) {
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory type is %s", memory->allocator->mem_type);
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory has %u bytes", memory->size);
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
+        gst_memory_unref(memory);
+      } else {
+        GST_ERROR_OBJECT (h264parse, "[DUMP] GstMemory is NULL");
+      }
+    }
+  }
+#endif
 
   return GST_FLOW_OK;
 }
@@ -2371,6 +2421,9 @@ gst_h264_parse_handle_sps_pps_nals (GstH264Parse * h264parse,
     /* should already be keyframe/IDR, but it may not have been,
      * so mark it as such to avoid being discarded by picky decoder */
     GST_BUFFER_FLAG_UNSET (new_buf, GST_BUFFER_FLAG_DELTA_UNIT);
+#ifdef DUMP_GSTBUFFER_INFO
+    GST_DEBUG_OBJECT(h264parse, "[DUMP] Replacing GstBuffer");
+#endif
     gst_buffer_replace (&frame->out_buffer, new_buf);
     gst_buffer_unref (new_buf);
     /* some result checking seems to make some compilers happy */
@@ -2426,9 +2479,56 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       GstMemory *mem =
           gst_memory_new_wrapped (GST_MEMORY_FLAG_READONLY, (guint8 *) au_delim,
           sizeof (au_delim), 0, sizeof (au_delim), NULL, NULL);
-
+#ifdef DUMP_GSTBUFFER_INFO
+      GST_DEBUG_OBJECT(h264parse, "[DUMP] Copying GstBuffer");
+#endif
       frame->out_buffer = gst_buffer_copy (frame->buffer);
       gst_buffer_prepend_memory (frame->out_buffer, mem);
+
+#ifdef DUMP_GSTBUFFER_INFO
+      if(frame->buffer != NULL) {
+        unsigned int mem_count = gst_buffer_n_memory(frame->buffer);
+        GstMemory *memory = NULL;
+        unsigned int ii = 0;
+
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer (source) has %u GstMemory", mem_count);
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(frame->buffer));
+
+        for(ii = 0; ii < mem_count; ii++) {
+          memory = gst_buffer_get_memory(frame->buffer, ii);
+          if(memory != NULL) {
+            GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory type is %s", memory->allocator->mem_type);
+            GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory has %u bytes", memory->size);
+            GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
+            gst_memory_unref(memory);
+          } else {
+            GST_ERROR_OBJECT (h264parse, "[DUMP] GstMemory is NULL");
+          }
+        }
+      }
+
+      if(frame->out_buffer != NULL) {
+        unsigned int mem_count = gst_buffer_n_memory(frame->out_buffer);
+        GstMemory *memory = NULL;
+        unsigned int ii = 0;
+
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer (copied) has %u GstMemory", mem_count);
+        GST_DEBUG_OBJECT (h264parse, "[DUMP] GstBuffer reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(frame->out_buffer));
+
+        for(ii = 0; ii < mem_count; ii++) {
+          memory = gst_buffer_get_memory(frame->out_buffer, ii);
+          if(memory != NULL) {
+            GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory type is %s", memory->allocator->mem_type);
+            GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory has %u bytes", memory->size);
+            GST_DEBUG_OBJECT (h264parse, "[DUMP] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
+            gst_memory_unref(memory);
+          } else {
+            GST_ERROR_OBJECT (h264parse, "[DUMP] GstMemory is NULL");
+          }
+        }
+      }
+#endif
+
       if (h264parse->idr_pos >= 0)
         h264parse->idr_pos += sizeof (au_delim);
 
