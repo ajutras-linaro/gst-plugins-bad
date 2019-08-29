@@ -78,14 +78,14 @@ enum
 static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("video/x-h264"));
+    GST_STATIC_CAPS ("video/x-h264; application/x-cenc, original-media-type = (string) video/x-h264"));
 
 static GstStaticPadTemplate srctemplate = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-h264, parsed = (boolean) true, "
         "stream-format=(string) { avc, avc3, byte-stream }, "
-        "alignment=(string) { au, nal }"));
+        "alignment=(string) { au, nal }; application/x-cenc, original-media-type = (string) video/x-h264"));
 
 #define parent_class gst_h264_parse_parent_class
 G_DEFINE_TYPE (GstH264Parse, gst_h264_parse, GST_TYPE_BASE_PARSE);
