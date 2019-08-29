@@ -2562,6 +2562,97 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       }
 #endif
 
+      /* Adjust the sub-sample mapping after the conversion to byte stream-format.
+       * TODO: Imporve implementation and handle error cases. */
+      {
+        unsigned subSampleCount;
+        GstBuffer* subSamplesBuffer = NULL;
+        const GValue* value;
+        GValue updatedValue = G_VALUE_INIT;
+        GstMapInfo subSamplesMap;
+
+        GstProtectionMeta* protectionMeta = (GstProtectionMeta*)(gst_buffer_get_protection_meta(frame->out_buffer));
+
+        if(GST_META_FLAG_IS_SET ((GstMeta *)protectionMeta, GST_META_FLAG_LOCKED)) {
+          GST_ERROR_OBJECT(h264parse, "Meta is locked");
+        }
+
+        GST_DEBUG_OBJECT(h264parse, "protection meta: %" GST_PTR_FORMAT, protectionMeta->info);
+
+        if (!gst_structure_get_uint(protectionMeta->info, "subsample_count", &subSampleCount)) {
+            GST_ERROR_OBJECT(h264parse, "Failed to get subsample_count");
+            gst_buffer_remove_meta(frame->out_buffer, (GstMeta*)(protectionMeta));
+            return GST_FLOW_NOT_SUPPORTED;
+        }
+
+        /* [HACK] Assume that the sub-sample mapping shall be adjusted if
+         * there are 2 memory objects in the buffer. This is not bullproof.
+         * TODO: Find a better way to detect the change in sub-sample
+         * mapping, */
+        if(mem_count >= 2) {
+          if (subSampleCount) {
+              value = gst_structure_get_value(protectionMeta->info, "subsamples");
+              if (!value) {
+                  GST_ERROR_OBJECT(h264parse, "Failed to get subsamples");
+                  gst_buffer_remove_meta(frame->out_buffer, (GstMeta*)(protectionMeta));
+                  return GST_FLOW_NOT_SUPPORTED;
+              }
+              subSamplesBuffer = gst_value_get_buffer(value);
+
+              if (!gst_buffer_map(subSamplesBuffer, &subSamplesMap, GST_MAP_READ)) {
+                  GST_ERROR_OBJECT(h264parse, "Failed to map subsample buffer");
+                  return GST_FLOW_NOT_SUPPORTED;
+              }
+
+
+              GstByteReader *reader = gst_byte_reader_new(subSamplesMap.data, subSamplesMap.size);
+              uint16_t inClear = 0;
+              uint32_t inEncrypted = 0;
+              uint32_t total = 0;
+              unsigned position;
+              GstByteWriter * writer = gst_byte_writer_new();
+              GstBuffer *updatedSubSamplesBuffer = NULL;
+
+              gst_byte_writer_init(writer);
+
+              for (position = 0; position < subSampleCount; position++) {
+                  gst_byte_reader_get_uint16_be(reader, &inClear);
+                  gst_byte_reader_get_uint32_be(reader, &inEncrypted);
+                  total += inClear + inEncrypted;
+                  GST_DEBUG_OBJECT(h264parse, "clear: %u, encrypted: %u", inClear, inEncrypted);
+
+                  if(position == 0) {
+                    /* Increase the clear data size by the size of the first GstMemory (the appended data). */
+                    memory = gst_buffer_get_memory(frame->out_buffer, 0);
+                    inClear += memory->size;
+                    gst_memory_unref(memory);
+                    GST_DEBUG_OBJECT(h264parse, "updated clear: %u, encrypted: %u", inClear, inEncrypted);
+                  }
+
+                  gst_byte_writer_put_uint16_be (writer, inClear);
+                  gst_byte_writer_put_uint32_be (writer, inEncrypted);
+              }
+              GST_DEBUG_OBJECT(h264parse, "total: %u", total);
+              GST_DEBUG_OBJECT(h264parse, "writer size: %u", gst_byte_writer_get_size(writer));
+
+              // Update the subsample information in the protection meta.
+              updatedSubSamplesBuffer = gst_byte_writer_free_and_get_buffer(writer);
+              if(updatedSubSamplesBuffer == NULL) {
+                GST_ERROR_OBJECT(h264parse, "Failure to get buffer");
+              }
+              GST_DEBUG_OBJECT(h264parse, "updatedSubSamplesBuffer size: %u", gst_buffer_get_size(updatedSubSamplesBuffer));
+
+              g_value_init (&updatedValue, GST_TYPE_BUFFER);
+              gst_value_set_buffer(&updatedValue, updatedSubSamplesBuffer);
+              gst_structure_set_value(protectionMeta->info, "subsamples", &updatedValue);
+
+              GST_DEBUG_OBJECT(h264parse, "update protection meta: %" GST_PTR_FORMAT, protectionMeta->info);
+
+              gst_buffer_unmap(subSamplesBuffer, &subSamplesMap);
+          }
+        }
+      }
+
       if (h264parse->idr_pos >= 0)
         h264parse->idr_pos += sizeof (au_delim);
 
