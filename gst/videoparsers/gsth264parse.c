@@ -2217,16 +2217,16 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
 
       /* Verify the assumptions */
       if(mem_count != 1) {
-        GST_WARN_OBJECT (h264parse, "buffer has more than 1 GstMemory");
+        GST_WARNING_OBJECT (h264parse, "buffer has more than 1 GstMemory");
       }
       if(new_mem_count != 1) {
-        GST_WARN_OBJECT (h264parse, "new buffer (frame->out_buffer) has more than 1 GstMemory");
+        GST_WARNING_OBJECT (h264parse, "new buffer (frame->out_buffer) has more than 1 GstMemory");
       }
       memory = gst_buffer_get_memory(buffer, 0);
 
       new_memory = gst_buffer_get_memory(frame->out_buffer, 0);
       if(memory->size != new_memory->size) {
-        GST_WARN_OBJECT (h264parse, "memory size in new buffer is different");
+        GST_WARNING_OBJECT (h264parse, "memory size in new buffer is different");
       }
 
       if(strcmp(memory->allocator->mem_type, "ionmem") == 0) {
@@ -2571,6 +2571,8 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
         const GValue* value;
         GValue updatedValue = G_VALUE_INIT;
         GstMapInfo subSamplesMap;
+        GstMemory *memory = NULL;
+        unsigned int mem_count = gst_buffer_n_memory(frame->out_buffer);
 
         GstProtectionMeta* protectionMeta = (GstProtectionMeta*)(gst_buffer_get_protection_meta(frame->out_buffer));
 
@@ -2607,9 +2609,9 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
 
 
               GstByteReader *reader = gst_byte_reader_new(subSamplesMap.data, subSamplesMap.size);
-              uint16_t inClear = 0;
-              uint32_t inEncrypted = 0;
-              uint32_t total = 0;
+              guint16 inClear = 0;
+              guint32 inEncrypted = 0;
+              guint32 total = 0;
               unsigned position;
               GstByteWriter * writer = gst_byte_writer_new();
               GstBuffer *updatedSubSamplesBuffer = NULL;
