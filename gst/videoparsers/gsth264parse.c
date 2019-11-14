@@ -2469,6 +2469,8 @@ gst_h264_parse_handle_sps_pps_nals (GstH264Parse * h264parse,
   return send_done;
 }
 
+#define DUMP_GSTBUFFER_INFO 1
+
 static GstFlowReturn
 gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
 {
