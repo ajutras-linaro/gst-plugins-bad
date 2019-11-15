@@ -2184,7 +2184,7 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       memory = gst_buffer_get_memory(buffer, ii);
       if(memory != NULL) {
         GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory type is %s", memory->allocator->mem_type);
-        GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %u bytes", memory->size);
+        GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %" G_GSIZE_FORMAT " bytes", memory->size);
         GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
         gst_memory_unref(memory);
       } else {
@@ -2255,7 +2255,7 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       memory = gst_buffer_get_memory(frame->out_buffer, ii);
       if(memory != NULL) {
         GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory type is %s", memory->allocator->mem_type);
-        GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %u bytes", memory->size);
+        GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %" G_GSIZE_FORMAT " bytes", memory->size);
         GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
         gst_memory_unref(memory);
       } else {
@@ -2628,7 +2628,7 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
           memory = gst_buffer_get_memory(frame->buffer, ii);
           if(memory != NULL) {
             GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory type is %s", memory->allocator->mem_type);
-            GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %u bytes", memory->size);
+            GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %" G_GSIZE_FORMAT " bytes", memory->size);
             GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
             gst_memory_unref(memory);
           } else {
@@ -2649,7 +2649,7 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
           memory = gst_buffer_get_memory(frame->out_buffer, ii);
           if(memory != NULL) {
             GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory type is %s", memory->allocator->mem_type);
-            GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %u bytes", memory->size);
+            GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory has %" G_GSIZE_FORMAT " bytes", memory->size);
             GST_DEBUG_OBJECT (h264parse, "[AJ] GstMemory reference count is %u", GST_MINI_OBJECT_REFCOUNT_VALUE(memory));
             gst_memory_unref(memory);
           } else {
@@ -2749,7 +2749,7 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
   if (updatedBufferSize > originalBufferSize) {
     /* Adjust the sub-sample mapping after the conversion to byte stream-format.
      * TODO: Improve implementation and handle error cases. */
-    if(gst_h264_parse_update_subsample(h264parse, frame->out_buffer, (updatedBufferSize - originalBufferSize))) != GST_FLOW_OK) {
+    if(gst_h264_parse_update_subsample(h264parse, frame->out_buffer, (updatedBufferSize - originalBufferSize)) != GST_FLOW_OK) {
       GST_ERROR_OBJECT (h264parse, "[AJ] Cannot update subsample information");
     }
   }
