@@ -2482,6 +2482,14 @@ gst_h264_parse_update_subsample (GstH264Parse * h264parse, GstBuffer * buffer, g
   GValue updatedValue = G_VALUE_INIT;
   GstMapInfo subSamplesMap;
 
+  GstByteReader *reader = NULL;
+  guint16 inClear = 0;
+  guint32 inEncrypted = 0;
+  guint32 total = 0;
+  unsigned position;
+  GstByteWriter * writer = NULL;
+  GstBuffer *updatedSubSamplesBuffer = NULL;
+
   GstProtectionMeta* protectionMeta = (GstProtectionMeta*)(gst_buffer_get_protection_meta(buffer));
 
   if(GST_META_FLAG_IS_SET ((GstMeta *)protectionMeta, GST_META_FLAG_LOCKED)) {
@@ -2510,14 +2518,8 @@ gst_h264_parse_update_subsample (GstH264Parse * h264parse, GstBuffer * buffer, g
           return GST_FLOW_NOT_SUPPORTED;
       }
 
-
-      GstByteReader *reader = gst_byte_reader_new(subSamplesMap.data, subSamplesMap.size);
-      guint16 inClear = 0;
-      guint32 inEncrypted = 0;
-      guint32 total = 0;
-      unsigned position;
-      GstByteWriter * writer = gst_byte_writer_new();
-      GstBuffer *updatedSubSamplesBuffer = NULL;
+      reader = gst_byte_reader_new(subSamplesMap.data, subSamplesMap.size);
+      writer = gst_byte_writer_new();
 
       gst_byte_writer_init(writer);
 
@@ -2543,7 +2545,7 @@ gst_h264_parse_update_subsample (GstH264Parse * h264parse, GstBuffer * buffer, g
       if(updatedSubSamplesBuffer == NULL) {
         GST_ERROR_OBJECT(h264parse, "Failure to get buffer");
       }
-      GST_DEBUG_OBJECT(h264parse, "updatedSubSamplesBuffer size: %u", gst_buffer_get_size(updatedSubSamplesBuffer));
+      GST_DEBUG_OBJECT(h264parse, "updatedSubSamplesBuffer size: %" G_GSIZE_FORMAT, gst_buffer_get_size(updatedSubSamplesBuffer));
 
       g_value_init (&updatedValue, GST_TYPE_BUFFER);
       gst_value_set_buffer(&updatedValue, updatedSubSamplesBuffer);
@@ -2566,8 +2568,8 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
   GstBuffer *buffer;
   GstEvent *event;
 
-  guin32 originalBufferSize = 0;
-  guin32 updatedBufferSize = 0;
+  guint32 originalBufferSize = 0;
+  guint32 updatedBufferSize = 0;
 
   h264parse = GST_H264_PARSE (parse);
 
