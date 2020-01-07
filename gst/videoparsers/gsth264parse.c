@@ -38,6 +38,8 @@ GST_DEBUG_CATEGORY (h264_parse_debug);
 
 #define DEFAULT_CONFIG_INTERVAL      (0)
 
+#define ENABLE_SDP 1
+
 enum
 {
   PROP_0,
@@ -2178,6 +2180,41 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
     gst_buffer_copy_into (buf, buffer, GST_BUFFER_COPY_METADATA, 0, -1);
     gst_buffer_replace (&frame->out_buffer, buf);
     gst_buffer_unref (buf);
+
+#ifdef ENABLE_SDP
+    // [HACK] For ionmem, restore GstMemory into new GstBuffer. This assumes
+    // that the copy did not actually modify the data and that the GstBuffer
+    // objects contain only one GstMemory.
+    {
+      unsigned int mem_count = gst_buffer_n_memory(buffer);
+      unsigned int new_mem_count = gst_buffer_n_memory(frame->out_buffer);
+      GstMemory *memory = NULL;
+      GstMemory *new_memory = NULL;
+
+      /* Verify the assumptions */
+      if(mem_count != 1) {
+        GST_WARNING_OBJECT (h264parse, "buffer has more than 1 GstMemory");
+      }
+      if(new_mem_count != 1) {
+        GST_WARNING_OBJECT (h264parse, "new buffer (frame->out_buffer) has more than 1 GstMemory");
+      }
+      memory = gst_buffer_get_memory(buffer, 0);
+
+      new_memory = gst_buffer_get_memory(frame->out_buffer, 0);
+      if(memory->size != new_memory->size) {
+        GST_WARNING_OBJECT (h264parse, "memory size in new buffer is different");
+      }
+
+      if(strcmp(memory->allocator->mem_type, "ionmem") == 0) {
+        GST_DEBUG_OBJECT (h264parse, "Reconstruct GstBuffer with ION memory");
+
+        /* Reconstruct the GstBuffer with ION memory */
+        gst_buffer_replace_memory(frame->out_buffer, 0, memory); // This unref the old memory
+      }
+
+      gst_memory_unref(new_memory);
+    }
+#endif
   }
 
   return GST_FLOW_OK;
