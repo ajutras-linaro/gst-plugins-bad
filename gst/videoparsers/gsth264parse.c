@@ -80,14 +80,14 @@ enum
 static GstStaticPadTemplate sinktemplate = GST_STATIC_PAD_TEMPLATE ("sink",
     GST_PAD_SINK,
     GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("video/x-h264"));
+    GST_STATIC_CAPS ("video/x-h264; application/x-cenc, original-media-type = (string) video/x-h264"));
 
 static GstStaticPadTemplate srctemplate = GST_STATIC_PAD_TEMPLATE ("src",
     GST_PAD_SRC,
     GST_PAD_ALWAYS,
     GST_STATIC_CAPS ("video/x-h264, parsed = (boolean) true, "
         "stream-format=(string) { avc, avc3, byte-stream }, "
-        "alignment=(string) { au, nal }"));
+        "alignment=(string) { au, nal }; application/x-cenc, original-media-type = (string) video/x-h264"));
 
 #define parent_class gst_h264_parse_parent_class
 G_DEFINE_TYPE (GstH264Parse, gst_h264_parse, GST_TYPE_BASE_PARSE);
@@ -2420,12 +2420,110 @@ gst_h264_parse_handle_sps_pps_nals (GstH264Parse * h264parse,
   return send_done;
 }
 
+
+// Update the subsample mapping attached to the GstBuffer to add headerSize bytes to the first subsample.
+static GstFlowReturn
+gst_h264_parse_update_subsample (GstH264Parse * h264parse, GstBuffer * buffer, guint32 headerSize)
+{
+  unsigned subSampleCount;
+  GstBuffer* subSamplesBuffer = NULL;
+  const GValue* value;
+  GValue updatedValue = G_VALUE_INIT;
+  GstMapInfo subSamplesMap;
+
+  GstByteReader *reader = NULL;
+  guint16 inClear = 0;
+  guint32 inEncrypted = 0;
+  guint32 total = 0;
+  unsigned position;
+  GstByteWriter * writer = NULL;
+  GstBuffer *updatedSubSamplesBuffer = NULL;
+
+  GstProtectionMeta* protectionMeta = (GstProtectionMeta*)(gst_buffer_get_protection_meta(buffer));
+  if(protectionMeta == NULL) {
+    return GST_FLOW_OK;
+  }
+
+  if(GST_META_FLAG_IS_SET ((GstMeta *)protectionMeta, GST_META_FLAG_LOCKED)) {
+    GST_ERROR_OBJECT(h264parse, "Meta is locked");
+    return GST_FLOW_NOT_SUPPORTED;
+  }
+
+  GST_DEBUG_OBJECT(h264parse, "protection meta: %" GST_PTR_FORMAT, protectionMeta->info);
+
+  if (!gst_structure_get_uint(protectionMeta->info, "subsample_count", &subSampleCount)) {
+      GST_ERROR_OBJECT(h264parse, "Failed to get subsample_count");
+      gst_buffer_remove_meta(buffer, (GstMeta*)(protectionMeta));
+      return GST_FLOW_NOT_SUPPORTED;
+  }
+
+  if (subSampleCount) {
+      value = gst_structure_get_value(protectionMeta->info, "subsamples");
+      if (!value) {
+          GST_ERROR_OBJECT(h264parse, "Failed to get subsamples");
+          gst_buffer_remove_meta(buffer, (GstMeta*)(protectionMeta));
+          return GST_FLOW_NOT_SUPPORTED;
+      }
+      subSamplesBuffer = gst_value_get_buffer(value);
+
+      if (!gst_buffer_map(subSamplesBuffer, &subSamplesMap, GST_MAP_READ)) {
+          GST_ERROR_OBJECT(h264parse, "Failed to map subsample buffer");
+          return GST_FLOW_NOT_SUPPORTED;
+      }
+
+      reader = gst_byte_reader_new(subSamplesMap.data, subSamplesMap.size);
+      writer = gst_byte_writer_new();
+
+      gst_byte_writer_init(writer);
+
+      for (position = 0; position < subSampleCount; position++) {
+          gst_byte_reader_get_uint16_be(reader, &inClear);
+          gst_byte_reader_get_uint32_be(reader, &inEncrypted);
+          total += inClear + inEncrypted;
+          GST_DEBUG_OBJECT(h264parse, "clear: %u, encrypted: %u", inClear, inEncrypted);
+
+          if(position == 0) {
+            inClear += headerSize;
+            total += headerSize;
+            GST_DEBUG_OBJECT(h264parse, "updated clear: %u, encrypted: %u", inClear, inEncrypted);
+          }
+
+          gst_byte_writer_put_uint16_be (writer, inClear);
+          gst_byte_writer_put_uint32_be (writer, inEncrypted);
+      }
+      GST_DEBUG_OBJECT(h264parse, "total: %u", total);
+      GST_DEBUG_OBJECT(h264parse, "writer size: %u", gst_byte_writer_get_size(writer));
+
+      // Update the subsample information in the protection meta.
+      updatedSubSamplesBuffer = gst_byte_writer_free_and_get_buffer(writer);
+      if(updatedSubSamplesBuffer == NULL) {
+        GST_ERROR_OBJECT(h264parse, "Failure to get buffer");
+      }
+      GST_DEBUG_OBJECT(h264parse, "updatedSubSamplesBuffer size: %" G_GSIZE_FORMAT, gst_buffer_get_size(updatedSubSamplesBuffer));
+
+      g_value_init (&updatedValue, GST_TYPE_BUFFER);
+      gst_value_set_buffer(&updatedValue, updatedSubSamplesBuffer);
+      gst_structure_set_value(protectionMeta->info, "subsamples", &updatedValue);
+
+      GST_DEBUG_OBJECT(h264parse, "update protection meta: %" GST_PTR_FORMAT, protectionMeta->info);
+
+      gst_buffer_unmap(subSamplesBuffer, &subSamplesMap);
+      gst_byte_reader_free(reader);
+  }
+
+  return GST_FLOW_OK;
+}
+
+
 static GstFlowReturn
 gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
 {
   GstH264Parse *h264parse;
   GstBuffer *buffer;
   GstEvent *event;
+
+  guint32 originalBufferSize = 0;
+  guint32 updatedBufferSize = 0;
 
   h264parse = GST_H264_PARSE (parse);
 
@@ -2456,6 +2554,9 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
     /* also signals the end of first-frame processing */
     h264parse->sent_codec_tag = TRUE;
   }
+
+  /* Maintain the size of the frame buffer to update the subsample mapping after conversion. */
+  originalBufferSize = gst_buffer_get_size(frame->buffer);
 
   /* In case of byte-stream, insert au delimeter by default
    * if it doesn't exist */
@@ -2547,6 +2648,20 @@ gst_h264_parse_pre_push_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       h264parse->have_sps = FALSE;
       h264parse->have_pps = FALSE;
       h264parse->state &= GST_H264_PARSE_STATE_VALID_PICTURE_HEADERS;
+    }
+  }
+
+  if(frame->out_buffer) {
+    updatedBufferSize = gst_buffer_get_size(frame->out_buffer);
+
+    GST_DEBUG_OBJECT (h264parse, "buffer size updated from %d to %d", originalBufferSize, updatedBufferSize);
+
+    if (updatedBufferSize > originalBufferSize) {
+      /* Adjust the sub-sample mapping after the conversion to byte stream-format.
+       * TODO: Improve implementation and handle error cases. */
+      if(gst_h264_parse_update_subsample(h264parse, frame->out_buffer, (updatedBufferSize - originalBufferSize)) != GST_FLOW_OK) {
+        GST_ERROR_OBJECT (h264parse, "Cannot update subsample information");
+      }
     }
   }
 
