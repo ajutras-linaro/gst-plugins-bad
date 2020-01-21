@@ -2208,11 +2208,20 @@ gst_h264_parse_parse_frame (GstBaseParse * parse, GstBaseParseFrame * frame)
       if(strcmp(memory->allocator->mem_type, "ionmem") == 0) {
         GST_DEBUG_OBJECT (h264parse, "Reconstruct GstBuffer with ION memory");
 
-        /* Reconstruct the GstBuffer with ION memory */
-        gst_buffer_replace_memory(frame->out_buffer, 0, memory); // This unref the old memory
+        /* Reconstruct the GstBuffer with ION memory
+         * This unref the memory in frame->out_buffer and take ownership
+         * of 'memory' */
+        gst_buffer_replace_memory(frame->out_buffer, 0, memory);
+        memory = NULL;
       }
 
-      gst_memory_unref(new_memory);
+      if(memory) {
+        gst_memory_unref(memory);
+      }
+
+      if(new_memory) {
+        gst_memory_unref(new_memory);
+      }
     }
 #endif
   }
